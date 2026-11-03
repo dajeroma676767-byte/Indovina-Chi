@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Indovina Chi - Celebrità in 3D</title>
+    <!-- Tailwind CSS per la UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js per la grafica 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls per lo Zoom, Pan e Rotazione -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #e5e7eb;
+            font-family: 'Inter', sans-serif;
+            touch-action: none; /* Previene scroll su mobile */
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        /* Hide scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Container per il Canvas 3D -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay (Sopra il canvas) -->
+    <div id="ui-layer" class="fixed top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10 hidden">
+        
+        <!-- Info P1 -->
+        <div class="flex flex-col items-start space-y-2 pointer-events-auto">
+            <div id="p1-info" class="bg-blue-600 text-white px-4 md:px-6 py-2 rounded-lg shadow-lg border-2 border-blue-400 transition-all duration-300">
+                <span class="font-bold text-sm md:text-lg">Giocatore 1</span>
+            </div>
+            <button id="btn-show-p1" class="bg-gray-900 hover:bg-gray-700 text-white px-3 py-2 rounded-lg shadow-md text-xs md:text-sm hidden flex items-center gap-2 select-none">
+                <span>👁️ Il mio personaggio</span>
+            </button>
+        </div>
+
+        <!-- HUD Centrale: Turno e Passaggio Turno -->
+        <div class="flex flex-col items-center space-y-4 pointer-events-auto mt-2">
+            <div id="turn-display" class="bg-white text-gray-800 font-bold px-6 md:px-8 py-2 md:py-3 rounded-2xl shadow-xl text-lg md:text-2xl border-b-4 border-gray-200">
+                Attesa Giocatori...
+            </div>
+            <div class="flex gap-2">
+                <button id="btn-guess" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 md:py-3 px-4 md:px-6 rounded-full shadow-lg border-b-4 border-yellow-700 active:translate-y-1 active:border-b-0 transition-all hidden">
+                    🎯 Indovina
+                </button>
+                <button id="btn-pass" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 md:py-3 px-6 md:px-10 rounded-full shadow-lg border-b-4 border-green-700 active:translate-y-1 active:border-b-0 transition-all">
+                    Passa il Turno ➡️
+                </button>
+            </div>
+        </div>
+
+        <!-- Info P2 -->
+        <div class="flex flex-col items-end space-y-2 pointer-events-auto">
+            <div id="p2-info" class="bg-red-600 text-white px-4 md:px-6 py-2 rounded-lg shadow-lg border-2 border-red-400 transition-all duration-300 opacity-50 scale-90">
+                <span class="font-bold text-sm md:text-lg">Giocatore 2</span>
+            </div>
+            <button id="btn-show-p2" class="bg-gray-900 hover:bg-gray-700 text-white px-3 py-2 rounded-lg shadow-md text-xs md:text-sm hidden flex items-center gap-2 select-none">
+                <span>👁️ Il mio personaggio</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modale per il Setup Iniziale (Scelta del personaggio) -->
+    <div id="modal-overlay" class="absolute inset-0 bg-black bg-opacity-80 z-20 flex items-center justify-center pointer-events-auto backdrop-blur-sm">
+        <div id="modal-content" class="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-11/12 max-w-5xl text-center max-h-[90vh] flex flex-col">
+            
+            <div id="setup-header" class="mb-6 shrink-0">
+                <h2 id="setup-title" class="text-2xl md:text-4xl font-extrabold mb-2 text-gray-800">Indovina Chi - Celebrità</h2>
+                <p id="setup-subtitle" class="text-sm md:text-lg text-blue-600 font-semibold bg-blue-50 py-2 px-4 rounded-full inline-block">Giocatore 1, scegli il tuo personaggio segreto! (Giocatore 2 non guardare)</p>
+            </div>
+            
+            <!-- Griglia bottoni celebrità -->
+            <div id="setup-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-3 overflow-y-auto p-2">
+                <!-- Generato tramite JS -->
+            </div>
+
+            <!-- Schermata di transizione tra i giocatori -->
+            <div id="setup-transition" class="hidden flex-col items-center justify-center flex-grow">
+                <div class="text-7xl mb-6">🙈</div>
+                <h3 class="text-2xl md:text-3xl font-bold mb-8 text-gray-800">Passa il dispositivo al Giocatore 2</h3>
+                <button id="btn-next-setup" class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-12 rounded-full shadow-xl text-xl border-b-4 border-red-800 active:translate-y-1 active:border-b-0 transition-all">
+                    Sono il Giocatore 2, Inizia
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay per mostrare il personaggio segreto durante il gioco -->
+    <div id="secret-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 hidden flex-col items-center justify-center p-4">
+        <div class="text-white text-2xl md:text-4xl font-bold mb-8 text-center bg-black bg-opacity-50 py-3 px-8 rounded-full" id="secret-warning"></div>
+        <div id="secret-card-placeholder" class="w-64 h-96 rounded-2xl shadow-2xl flex flex-col items-center justify-center relative overflow-hidden transition-all transform scale-110">
+            <div class="z-10 bg-white p-4 rounded-full mb-6 shadow-md">
+                <svg class="w-16 h-16 text-gray-800" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+            <div id="secret-name" class="text-3xl md:text-4xl font-bold text-center px-4 z-10 text-gray-900 leading-tight"></div>
+        </div>
+        <p class="text-gray-300 mt-12 text-lg font-medium animate-pulse">Rilascia il pulsante per tornare al gioco</p>
+    </div>
+
+    <!-- Modale per Indovinare -->
+    <div id="guess-modal" class="fixed inset-0 bg-black bg-opacity-80 z-40 hidden items-center justify-center pointer-events-auto backdrop-blur-sm">
+        <div class="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-11/12 max-w-5xl text-center max-h-[90vh] flex flex-col relative">
+            <button id="btn-close-guess" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 font-bold text-2xl">&times;</button>
+            <h2 class="text-2xl md:text-4xl font-extrabold mb-2 text-gray-800">Indovina l'avversario!</h2>
+            <p class="text-sm md:text-lg text-yellow-600 font-semibold mb-6">Attenzione: se sbagli, perdi immediatamente la partita!</p>
+            <div id="guess-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-3 overflow-y-auto p-2"></div>
+        </div>
+    </div>
+
+    <!-- Modale di Fine Partita -->
+    <div id="end-modal" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex-col items-center justify-center pointer-events-auto backdrop-blur-md">
+        <h1 id="end-title" class="text-5xl md:text-7xl font-black mb-4 drop-shadow-lg transform scale-125 text-center px-4"></h1>
+        <p id="end-subtitle" class="text-xl md:text-2xl text-gray-300 mb-8 text-center px-4"></p>
+        <button onclick="location.reload()" class="bg-white text-gray-900 hover:bg-gray-200 font-bold py-3 px-8 rounded-full shadow-xl text-xl transition-all">Gioca Ancora</button>
+    </div>
+
+    <!-- MAIN LOGIC -->
+    <script>
+        // Array di 24 celebrità famose
+        const celebrities = [
+            "BUCCIOLINI", "ISMA", "FAINA", "ADAM", 
+            "FLAVIO", "CAIANI", "GIRO G.", "CINCOLINI", 
+            "FIUMANO", "FURELLI", "GHEB", "PACCA", 
+            "RIGHI", "MORI", "BOMBER WOLF", "CERULLO", 
+            "FRATANTONI", "SPATAFFI", "ULIVIERI", "MARIANO", 
+            "BOSI", "ORSINO", "KARAN", "MURICCI", 
+ 	    "TESORIERE", "HARSH", "PUPUFI", "JORDAN"
+        ];
+
+        // Stato del gioco
+        let state = {
+            phase: 'setup1', // 'setup1', 'passTo2', 'setup2', 'play'
+            turn: 1,
+            p1Secret: null,
+            p2Secret: null
+        };
+
+        // UI Element References
+        const uiLayer = document.getElementById('ui-layer');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const setupGrid = document.getElementById('setup-grid');
+        const setupTransition = document.getElementById('setup-transition');
+        const setupTitle = document.getElementById('setup-title');
+        const setupSubtitle = document.getElementById('setup-subtitle');
+        const turnDisplay = document.getElementById('turn-display');
+        const btnPass = document.getElementById('btn-pass');
+
+        // ==== SETUP E INTERFACCIA ====
+
+        function renderSetupGrid() {
+            setupGrid.innerHTML = '';
+            const sortedCelebs = [...celebrities].sort();
+            sortedCelebs.forEach(celeb => {
+                const btn = document.createElement('button');
+                const isP1 = state.phase === 'setup1';
+                
+                btn.className = `p-3 md:p-4 rounded-xl shadow-sm font-bold text-xs md:text-sm border-b-4 transition-all transform hover:-translate-y-1 active:translate-y-0 active:border-b-0 flex items-center justify-center min-h-[60px] ${isP1 ? 'bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-900' : 'bg-red-50 hover:bg-red-100 border-red-300 text-red-900'}`;
+                btn.innerText = celeb;
+                
+                btn.onclick = () => {
+                    if (state.phase === 'setup1') {
+                        state.p1Secret = celeb;
+                        state.phase = 'passTo2';
+                        setupGrid.classList.add('hidden');
+                        setupTitle.innerText = "Scelta Completata";
+                        setupSubtitle.classList.add('hidden');
+                        setupTransition.classList.remove('hidden');
+                        setupTransition.classList.add('flex');
+                    } else if (state.phase === 'setup2') {
+                        state.p2Secret = celeb;
+                        state.phase = 'play';
+                        modalOverlay.classList.add('hidden');
+                        uiLayer.classList.remove('hidden');
+                        updateTurnHUD();
+                        init3D(); // Inizializza il board 3D solo a setup completato per risparmiare performance
+                    }
+                };
+                setupGrid.appendChild(btn);
+            });
+        }
+
+        document.getElementById('btn-next-setup').addEventListener('click', () => {
+            state.phase = 'setup2';
+            setupTransition.classList.remove('flex');
+            setupTransition.classList.add('hidden');
+            setupGrid.classList.remove('hidden');
+            setupTitle.innerText = "Indovina Chi - Celebrità";
+            setupSubtitle.classList.remove('hidden');
+            setupSubtitle.className = "text-sm md:text-lg text-red-600 font-semibold bg-red-50 py-2 px-4 rounded-full inline-block";
+            setupSubtitle.innerText = "Giocatore 2, scegli il tuo personaggio segreto! (Giocatore 1, non guardare)";
+            renderSetupGrid();
+        });
+
+        function updateTurnHUD() {
+            const p1El = document.getElementById('p1-info');
+            const p2El = document.getElementById('p2-info');
+            const p1Btn = document.getElementById('btn-show-p1');
+            const p2Btn = document.getElementById('btn-show-p2');
+            const btnGuess = document.getElementById('btn-guess');
+
+            btnGuess.classList.remove('hidden');
+
+            // Imposta il target del fuoco di OrbitControls sul giocatore di turno
+            if (typeof targetFocusX !== 'undefined' && typeof controls !== 'undefined' && controls) {
+                targetFocusX = state.turn === 1 ? -10 : 10;
+            }
+
+            if (state.turn === 1) {
+                p1El.classList.remove('opacity-50', 'scale-90');
+                p1El.classList.add('scale-105', 'ring-4', 'ring-blue-400');
+                p2El.classList.add('opacity-50', 'scale-90');
+                p2El.classList.remove('scale-105', 'ring-4', 'ring-red-400');
+                turnDisplay.innerText = "Turno del Giocatore 1";
+                turnDisplay.className = "bg-blue-600 text-white font-bold px-6 md:px-8 py-2 md:py-3 rounded-2xl shadow-xl text-lg md:text-2xl border-b-4 border-blue-800 transition-all";
+                p1Btn.classList.remove('hidden');
+                p2Btn.classList.add('hidden');
+            } else {
+                p2El.classList.remove('opacity-50', 'scale-90');
+                p2El.classList.add('scale-105', 'ring-4', 'ring-red-400');
+                p1El.classList.add('opacity-50', 'scale-90');
+                p1El.classList.remove('scale-105', 'ring-4', 'ring-blue-400');
+                turnDisplay.innerText = "Turno del Giocatore 2";
+                turnDisplay.className = "bg-red-500 text-white font-bold px-6 md:px-8 py-2 md:py-3 rounded-2xl shadow-xl text-lg md:text-2xl border-b-4 border-red-700 transition-all";
+                p2Btn.classList.remove('hidden');
+                p1Btn.classList.add('hidden');
+            }
+        }
+
+        btnPass.addEventListener('click', () => {
+            // Cambia turno ed esegue subito la transizione fluida verso la plancia avversaria
+            state.turn = state.turn === 1 ? 2 : 1;
+            updateTurnHUD();
+        });
+
+        // Mostrare Personaggio Segreto
+        const secretOverlay = document.getElementById('secret-overlay');
+        const secretWarning = document.getElementById('secret-warning');
+        const secretName = document.getElementById('secret-name');
+        const secretCardPlaceholder = document.getElementById('secret-card-placeholder');
+
+        function showSecret(playerNum) {
+            if (playerNum === 1) {
+                secretName.innerText = state.p1Secret;
+                secretWarning.innerText = "Giocatore 2, NON GUARDARE! 🙈";
+                secretCardPlaceholder.className = "w-64 h-96 rounded-2xl border-8 border-blue-500 shadow-2xl flex flex-col items-center justify-center bg-blue-50";
+            } else {
+                secretName.innerText = state.p2Secret;
+                secretWarning.innerText = "Giocatore 1, NON GUARDARE! 🙈";
+                secretCardPlaceholder.className = "w-64 h-96 rounded-2xl border-8 border-red-500 shadow-2xl flex flex-col items-center justify-center bg-red-50";
+            }
+            secretOverlay.classList.remove('hidden');
+            secretOverlay.classList.add('flex');
+        }
+
+        function hideSecret() {
+            secretOverlay.classList.add('hidden');
+            secretOverlay.classList.remove('flex');
+        }
+
+        const addHoldListeners = (btn, playerNum) => {
+            const show = (e) => { e.preventDefault(); showSecret(playerNum); };
+            const hide = (e) => { e.preventDefault(); hideSecret(); };
+            btn.addEventListener('mousedown', show);
+            btn.addEventListener('mouseup', hide);
+            btn.addEventListener('mouseleave', hide);
+            btn.addEventListener('touchstart', show, {passive: false});
+            btn.addEventListener('touchend', hide);
+            btn.addEventListener('touchcancel', hide);
+        };
+        
+        addHoldListeners(document.getElementById('btn-show-p1'), 1);
+        addHoldListeners(document.getElementById('btn-show-p2'), 2);
+
+        // ==== LOGICA INDOVINA (GUESS) ====
+        const btnGuess = document.getElementById('btn-guess');
+        const guessModal = document.getElementById('guess-modal');
+        const btnCloseGuess = document.getElementById('btn-close-guess');
+        const guessGrid = document.getElementById('guess-grid');
+        const endModal = document.getElementById('end-modal');
+        const endTitle = document.getElementById('end-title');
+        const endSubtitle = document.getElementById('end-subtitle');
+
+        function renderGuessGrid() {
+            guessGrid.innerHTML = '';
+            const sortedCelebs = [...celebrities].sort();
+            sortedCelebs.forEach(celeb => {
+                const btn = document.createElement('button');
+                btn.className = `p-3 md:p-4 rounded-xl shadow-sm font-bold text-xs md:text-sm border-b-4 transition-all transform hover:-translate-y-1 active:translate-y-0 active:border-b-0 flex items-center justify-center min-h-[60px] bg-yellow-50 hover:bg-yellow-100 border-yellow-300 text-yellow-900`;
+                btn.innerText = celeb;
+                
+                btn.onclick = () => {
+                    handleGuess(celeb);
+                };
+                guessGrid.appendChild(btn);
+            });
+        }
+
+        function handleGuess(guessedName) {
+            guessModal.classList.add('hidden');
+            guessModal.classList.remove('flex');
+            
+            const opponentSecret = state.turn === 1 ? state.p2Secret : state.p1Secret;
+            const currentPlayerColor = state.turn === 1 ? 'text-blue-400' : 'text-red-400';
+            
+            endModal.classList.remove('hidden');
+            endModal.classList.add('flex');
+
+            if (guessedName === opponentSecret) {
+                // Correct guess -> Win
+                endTitle.innerHTML = `GIOCATORE ${state.turn}<br>HA VINTO! 🎉`;
+                endTitle.className = `text-5xl md:text-7xl font-black mb-4 drop-shadow-lg transform scale-125 text-center px-4 ${currentPlayerColor}`;
+                endSubtitle.innerText = `Esatto! L'avversario era proprio ${opponentSecret}.`;
+            } else {
+                // Wrong guess -> Lose
+                const winner = state.turn === 1 ? 2 : 1;
+                const winnerColor = winner === 1 ? 'text-blue-400' : 'text-red-400';
+                endTitle.innerHTML = `GIOCATORE ${winner}<br>HA VINTO! 🎉`;
+                endTitle.className = `text-5xl md:text-7xl font-black mb-4 drop-shadow-lg transform scale-125 text-center px-4 ${winnerColor}`;
+                endSubtitle.innerText = `Il Giocatore ${state.turn} ha sbagliato! Pensava a ${guessedName} ma era ${opponentSecret}.`;
+            }
+        }
+
+        btnGuess.addEventListener('click', () => {
+            renderGuessGrid();
+            guessModal.classList.remove('hidden');
+            guessModal.classList.add('flex');
+        });
+
+        btnCloseGuess.addEventListener('click', () => {
+            guessModal.classList.add('hidden');
+            guessModal.classList.remove('flex');
+        });
+
+        // Avvio Iniziale
+        renderSetupGrid();
+
+
+        // ==== GESTIONE 3D (THREE.JS + ORBIT CONTROLS) ====
+        
+        let scene, camera, renderer, raycaster, mouse, controls;
+        let targetFocusX = -10; // Target X per lo spostamento di visuale tra i due giocatori
+        const cards = [];
+
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            const lines = [];
+            for(let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = context.measureText(testLine);
+                const testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    lines.push(line.trim());
+                    line = words[n] + ' ';
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line.trim());
+            
+            const startY = y - ((lines.length - 1) * lineHeight) / 2;
+            for(let i=0; i<lines.length; i++){
+                context.fillText(lines[i], x, startY + (i*lineHeight));
+            }
+        }
+
+        function createCardTexture(name, isP1) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 744;
+            const ctx = canvas.getContext('2d');
+            
+            // Sfondo Base a contrasto elevato
+            ctx.fillStyle = isP1 ? '#ffffff' : '#ffffff';
+            ctx.fillRect(0, 0, 512, 744);
+            
+            // Bordo Esterno Spesso
+            ctx.strokeStyle = isP1 ? '#2563eb' : '#dc2626'; // blue-600 / red-600
+            ctx.lineWidth = 20;
+            ctx.strokeRect(10, 10, 492, 724);
+
+            // Sfondo area del nome (in basso)
+            ctx.fillStyle = isP1 ? '#dbeafe' : '#fee2e2';
+            ctx.fillRect(20, 450, 472, 274);
+            ctx.strokeStyle = isP1 ? '#3b82f6' : '#ef4444';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(20, 450, 472, 274);
+
+            // Riquadro Immagine Interno (in alto)
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(35, 35, 442, 395);
+            ctx.strokeStyle = isP1 ? '#93c5fd' : '#fca5a5';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(35, 35, 442, 395);
+
+            // Silhouette generica
+            ctx.fillStyle = isP1 ? '#60a5fa' : '#f87171';
+            ctx.beginPath();
+            ctx.arc(256, 185, 75, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(256, 410, 130, Math.PI, 0);
+            ctx.fill();
+
+            // Testo Extra Leggibile (Font più grande e scuro)
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = '900 64px "Inter", sans-serif';
+            
+            wrapText(ctx, name, 256, 580, 440, 72);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function onWindowResize() {
+            if(!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xe5e7eb);
+            
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(-10, 18, 18);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // OrbitControls per abilitare zoom (rotella / pinch), trascinamento e inclinazione
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2.1; // Impedisce di andare sotto il tavolo
+            controls.minDistance = 4;   // Zoom massimo da vicino
+            controls.maxDistance = 45;  // Zoom massimo da lontano
+            controls.target.set(-10, 0, 0);
+
+            // Luci
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            dirLight.position.set(15, 35, 15);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -30;
+            dirLight.shadow.camera.right = 30;
+            dirLight.shadow.camera.top = 30;
+            dirLight.shadow.camera.bottom = -30;
+            scene.add(dirLight);
+
+            // Tavolo Base
+            const tableGeo = new THREE.PlaneGeometry(300, 300);
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af });
+            const table = new THREE.Mesh(tableGeo, tableMat);
+            table.rotation.x = -Math.PI / 2;
+            table.position.y = -0.5;
+            table.receiveShadow = true;
+            scene.add(table);
+
+            // Supporti dei Tabelloni
+            const baseGeo = new THREE.BoxGeometry(16, 0.5, 16);
+            const p1BaseMat = new THREE.MeshStandardMaterial({color: 0x1e3a8a});
+            const p1Base = new THREE.Mesh(baseGeo, p1BaseMat);
+            p1Base.position.set(-10, -0.25, 0);
+            p1Base.receiveShadow = true;
+            p1Base.castShadow = true;
+            scene.add(p1Base);
+
+            const p2BaseMat = new THREE.MeshStandardMaterial({color: 0x7f1d1d});
+            const p2Base = new THREE.Mesh(baseGeo, p2BaseMat);
+            p2Base.position.set(10, -0.25, 0);
+            p2Base.receiveShadow = true;
+            p2Base.castShadow = true;
+            scene.add(p2Base);
+
+            // Creazione Carte
+            const cardGeo = new THREE.BoxGeometry(2.2, 3.2, 0.1);
+            const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+            
+            const p1Board = new THREE.Group();
+            p1Board.position.set(-10, 0, 0);
+            scene.add(p1Board);
+
+            const p2Board = new THREE.Group();
+            p2Board.position.set(10, 0, 0);
+            scene.add(p2Board);
+
+            const p1BackMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8 });
+            const p2BackMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c });
+            const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb });
+
+            const sortedCelebs = [...celebrities].sort();
+
+            for (let i = 0; i < 24; i++) {
+                let r = Math.floor(i / 6);
+                let c = i % 6;
+                let xPos = (c * 2.5) - 6.25;
+                let zPos = (r * 3.8) - 5.7;
+
+                // --- Carta Giocatore 1 ---
+                let tex1 = createCardTexture(sortedCelebs[i], true);
+                tex1.anisotropy = maxAnisotropy;
+                let mat1 = [edgeMat, edgeMat, edgeMat, edgeMat, new THREE.MeshStandardMaterial({ map: tex1 }), p1BackMat];
+                let mesh1 = new THREE.Mesh(cardGeo, mat1);
+                mesh1.position.y = 1.6;
+                mesh1.castShadow = true;
+                mesh1.receiveShadow = true;
+                
+                let group1 = new THREE.Group();
+                group1.add(mesh1);
+                group1.position.set(xPos, 0, zPos);
+                group1.userData = { isCardGroup: true, owner: 1, isFlipped: false, targetAngle: 0 };
+                p1Board.add(group1);
+                cards.push(group1);
+
+                // --- Carta Giocatore 2 ---
+                let tex2 = createCardTexture(sortedCelebs[i], false);
+                tex2.anisotropy = maxAnisotropy;
+                let mat2 = [edgeMat, edgeMat, edgeMat, edgeMat, new THREE.MeshStandardMaterial({ map: tex2 }), p2BackMat];
+                let mesh2 = new THREE.Mesh(cardGeo, mat2);
+                mesh2.position.y = 1.6;
+                mesh2.castShadow = true;
+                mesh2.receiveShadow = true;
+
+                let group2 = new THREE.Group();
+                group2.add(mesh2);
+                group2.position.set(xPos, 0, zPos);
+                group2.userData = { isCardGroup: true, owner: 2, isFlipped: false, targetAngle: 0 };
+                p2Board.add(group2);
+                cards.push(group2);
+            }
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onPointerDown);
+
+            animate();
+        }
+
+        let isPointerDragging = false;
+        let pointerStartX = 0;
+        let pointerStartY = 0;
+
+        function onPointerDown(event) {
+            pointerStartX = event.clientX;
+            pointerStartY = event.clientY;
+
+            const onPointerUp = (upEvent) => {
+                window.removeEventListener('pointerup', onPointerUp);
+                const diffX = Math.abs(upEvent.clientX - pointerStartX);
+                const diffY = Math.abs(upEvent.clientY - pointerStartY);
+
+                // Ignora l'azione se è stato un trascinamento/rotazione con la telecamera
+                if (diffX > 5 || diffY > 5) return;
+
+                if (state.phase !== 'play' || upEvent.target.closest('#ui-layer button') || !guessModal.classList.contains('hidden') || !endModal.classList.contains('hidden')) return;
+
+                mouse.x = (upEvent.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(upEvent.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+
+                const meshes = cards.map(c => c.children[0]);
+                const intersects = raycaster.intersectObjects(meshes);
+                
+                if (intersects.length > 0) {
+                    const mesh = intersects[0].object;
+                    const group = mesh.parent;
+                    
+                    if (group && group.userData.isCardGroup) {
+                        if (group.userData.owner === state.turn) {
+                            group.userData.isFlipped = !group.userData.isFlipped;
+                            group.userData.targetAngle = group.userData.isFlipped ? (Math.PI / 2 + 0.05) : 0;
+                        }
+                    }
+                }
+            };
+
+            window.addEventListener('pointerup', onPointerUp);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Animazione caduta carte
+            for (let i = 0; i < cards.length; i++) {
+                let group = cards[i];
+                if (group.userData.isCardGroup) {
+                    group.rotation.x += (group.userData.targetAngle - group.rotation.x) * 0.15;
+                }
+            }
+            
+            // Spostamento fluido del target della telecamera OrbitControls al cambio turno
+            if (controls && state.phase === 'play') {
+                const currentTargetX = controls.target.x;
+                const newTargetX = currentTargetX + (targetFocusX - currentTargetX) * 0.08;
+                const deltaX = newTargetX - currentTargetX;
+                
+                controls.target.x = newTargetX;
+                camera.position.x += deltaX; // Muove anche la posizione della telecamera in parallelo
+                controls.update();
+            } else if (controls) {
+                controls.update();
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+    </script>
+</body>
+</html>
